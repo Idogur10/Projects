@@ -1,8 +1,8 @@
 def main():
     print("Hello world")
-    addition(3,5)
-    print("trial i tried")
+    addition(addition(1,2),5)
 def addition(a,b):
-    return print(a+b)
+    print(a+b)
+    return a+b
 if __name__ == "__main__":
     main()
