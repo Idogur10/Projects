@@ -10,29 +10,58 @@ import matplotlib.pyplot as plt
 from config import (
     HIDDEN_DIM, NUM_LAYERS, BATCH_SIZE, N_EPOCHS, LEARNING_RATE,
     RANDOM_SEED, DIRECTORY, WINDOW_SIZE, HORIZON, DELTA_T, OUTPUT_SIZE,
-    W_POS_ADE, W_VEL_MSE, W_ACC_MSE, PATIENCE
+    W_POS_ADE, W_VEL_MSE, W_ACC_MSE, PATIENCE,
+    DOWNSAMPLE_FACTOR, ORIGINAL_WINDOW_SIZE, ORIGINAL_HORIZON
 )
 from data import TrajectoryDataset, preprocessing
 from models import Encoder_GRU, Decoder_GRU, Seq2SeqGRU
 from utils import ade_loss, evaluate_at_timestamps, plot_stepwise_errors, plot_val_trajs_3d_and_xyz
 
 
+def downsample_data(data, factor):
+    """
+    Downsample trajectory data by taking every factor-th sample.
+
+    Args:
+        data: (N, seq_len, features) array
+        factor: Downsampling factor (e.g., 10 for 100Hz -> 10Hz)
+
+    Returns:
+        Downsampled data (N, seq_len // factor, features)
+    """
+    return data[:, ::factor, :]
+
+
 def main():
     np.random.seed(RANDOM_SEED)
     torch.manual_seed(RANDOM_SEED)
+
+    print(f"Downsampling: 100Hz -> {100 // DOWNSAMPLE_FACTOR}Hz (factor={DOWNSAMPLE_FACTOR})")
+    print(f"Input window: {ORIGINAL_WINDOW_SIZE} -> {WINDOW_SIZE} timesteps")
+    print(f"Horizon: {ORIGINAL_HORIZON} -> {HORIZON} timesteps")
+    print(f"Delta_t: 0.01s -> {DELTA_T}s")
+    print()
 
     # === Load Training Data ===
     filename = "No_B_legnth_250_step_size50vert_hor_WithoutB.npy"
     file_path = os.path.join(DIRECTORY, filename)
     train_data = np.load(file_path)
+    print(f"Original train data shape: {train_data.shape}")
+
+    # Downsample the data
+    train_data = downsample_data(train_data, DOWNSAMPLE_FACTOR)
+    print(f"Downsampled train data shape: {train_data.shape}")
 
     # Prepare input features and targets
     train_inputs_raw = train_data[:, :WINDOW_SIZE, :]
     train_inputs_raw, vel_scaler, pos_mean = preprocessing(train_inputs_raw)
-    train_targets_raw = train_data[:, WINDOW_SIZE:, :OUTPUT_SIZE - 3]
+    train_targets_raw = train_data[:, WINDOW_SIZE:WINDOW_SIZE + HORIZON, :OUTPUT_SIZE - 3]
     train_targets = train_targets_raw
     acceleration_target = np.gradient(train_targets[:, :, 3:6], DELTA_T, axis=1)
     train_targets = np.concatenate([train_targets, acceleration_target], axis=-1)
+
+    print(f"Train inputs shape: {train_inputs_raw.shape}")
+    print(f"Train targets shape: {train_targets.shape}")
 
     train_set = TrajectoryDataset(train_inputs_raw, train_targets)
     train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True, pin_memory=True)
@@ -42,9 +71,12 @@ def main():
     file_path = os.path.join(DIRECTORY, filename)
     valid_data = np.load(file_path)
 
+    # Downsample
+    valid_data = downsample_data(valid_data, DOWNSAMPLE_FACTOR)
+
     valid_inputs_raw = valid_data[:, :WINDOW_SIZE, :]
     valid_inputs_raw = preprocessing(valid_inputs_raw, vel_scaler, pos_mean)
-    valid_targets_raw = valid_data[:, WINDOW_SIZE:, :OUTPUT_SIZE]
+    valid_targets_raw = valid_data[:, WINDOW_SIZE:WINDOW_SIZE + HORIZON, :OUTPUT_SIZE]
     acceleration_target = np.gradient(valid_targets_raw[:, :, 3:6], DELTA_T, axis=1)
     valid_targets = np.concatenate([valid_targets_raw, acceleration_target], axis=-1)
 
@@ -53,7 +85,7 @@ def main():
 
     # === Setup Device ===
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    print(f"\nUsing device: {device}")
     if device.type == 'cuda':
         print(f"GPU Name: {torch.cuda.get_device_name(0)}")
         print(f"Memory Allocated: {torch.cuda.memory_allocated(0) / 1024 ** 2:.2f} MB")
@@ -62,6 +94,10 @@ def main():
     encoder = Encoder_GRU(13, HIDDEN_DIM, NUM_LAYERS)
     decoder = Decoder_GRU(OUTPUT_SIZE, HIDDEN_DIM, NUM_LAYERS, 3)
     model = Seq2SeqGRU(encoder, decoder, HORIZON, DELTA_T, pos_mean, vel_scaler).to(device)
+
+    # Print model info
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Model parameters: {total_params:,}")
 
     criterion = ade_loss
     vel_loss = torch.nn.MSELoss()
@@ -133,7 +169,7 @@ def main():
         valid_losses.append(valid_loss)
         scheduler.step(valid_loss)
         current_lr = optimizer.param_groups[0]['lr']
-        evaluate_at_timestamps(model, valid_loader, device)
+        evaluate_at_timestamps(model, valid_loader, device, steps=[1, 2, 3, 4, 5])
 
         print(f"Epoch {epoch + 1}, Train Loss: {avg_total:.6f}, Val Loss: {valid_loss:.6f}, LR: {current_lr:.6e}")
         train_losses.append(avg_total)
@@ -153,12 +189,13 @@ def main():
     print("**********************************")
     print("Checking results on the trainset")
     print("**********************************")
-    evaluate_at_timestamps(model, train_loader, device)
+    evaluate_at_timestamps(model, train_loader, device, steps=[1, 2, 3, 4, 5])
 
     # Save model
-    model_save_path = os.path.join(DIRECTORY, 'model', 'GRU_modelbasedV_Hid128secord_er_200_50.pth')
+    model_save_path = os.path.join(DIRECTORY, 'model', f'GRU_modelbasedV_Hid{HIDDEN_DIM}_ds{DOWNSAMPLE_FACTOR}.pth')
     os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
     torch.save(model.state_dict(), model_save_path)
+    print(f"Model saved to: {model_save_path}")
 
     # Plot training curves
     plt.figure()
@@ -176,11 +213,14 @@ def main():
     filename = "No_U_legnth_250_step_size50vert_horA_test.npy"
     file_path = os.path.join(DIRECTORY, filename)
     test_data = np.load(file_path)
+
+    # Downsample test data
+    test_data = downsample_data(test_data, DOWNSAMPLE_FACTOR)
     model.eval()
 
     test_inputs_raw = test_data[:, :WINDOW_SIZE, :]
     test_inputs_raw = preprocessing(test_inputs_raw, vel_scaler, pos_mean)
-    test_targets_raw = test_data[:, WINDOW_SIZE:, :3]
+    test_targets_raw = test_data[:, WINDOW_SIZE:WINDOW_SIZE + HORIZON, :3]
     test_targets = test_targets_raw
 
     test_set = TrajectoryDataset(test_inputs_raw, test_targets)
@@ -200,7 +240,7 @@ def main():
     final_targets_np = np.concatenate(all_targets, axis=0)
 
     # Plot error metrics
-    plot_stepwise_errors(final_preds_np, final_targets_np, title_suffix=" (Validation Set)")
+    plot_stepwise_errors(final_preds_np, final_targets_np, title_suffix=" (Test Set - 10Hz)")
 
     # Plot 3D trajectories
     plot_val_trajs_3d_and_xyz(
@@ -212,7 +252,7 @@ def main():
         device=device,
         num_examples=3
     )
-    evaluate_at_timestamps(model, test_loader, device)
+    evaluate_at_timestamps(model, test_loader, device, steps=[1, 2, 3, 4, 5])
 
 
 if __name__ == "__main__":

@@ -23,9 +23,17 @@ PATIENCE = 10
 
 # Data
 DIRECTORY = r'C:\Users\idogu\OneDrive\Documents\Master\data'
-TRAJECTORY_LENGTH = 250  # sample size
-WINDOW_SIZE = 200  # input size K
+TRAJECTORY_LENGTH = 250  # original sample size
+
+# Downsampling: 100Hz -> 10Hz
+DOWNSAMPLE_FACTOR = 10
+ORIGINAL_WINDOW_SIZE = 200  # original input size at 100Hz
+ORIGINAL_HORIZON = 50       # original horizon at 100Hz
+
+# After downsampling (10Hz)
+WINDOW_SIZE = ORIGINAL_WINDOW_SIZE // DOWNSAMPLE_FACTOR  # 20 timesteps
+HORIZON = ORIGINAL_HORIZON // DOWNSAMPLE_FACTOR          # 5 timesteps
+DELTA_T = 0.01 * DOWNSAMPLE_FACTOR                       # 0.1 seconds
+
 STEP_SIZE = 50
-HORIZON = 50
-DELTA_T = 0.01
 OUTPUT_SIZE = 9
