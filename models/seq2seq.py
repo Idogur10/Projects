@@ -5,45 +5,46 @@ import torch
 import torch.nn as nn
 
 
-class Encoder_GRU(nn.Module):
-    """GRU-based encoder for trajectory sequences."""
+class Encoder_LSTM(nn.Module):
+    """LSTM-based encoder for trajectory sequences."""
 
     def __init__(self, input_size, hidden_size, num_layers):
-        super(Encoder_GRU, self).__init__()
+        super(Encoder_LSTM, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=True)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
 
     def forward(self, x):
-        output, h = self.gru(x)
-        return h
+        output, (h, c) = self.lstm(x)
+        return (h, c)  # Return both hidden and cell state
 
 
-class Decoder_GRU(nn.Module):
-    """GRU-based decoder for trajectory prediction."""
+class Decoder_LSTM(nn.Module):
+    """LSTM-based decoder for trajectory prediction."""
 
     def __init__(self, input_size, hidden_size, num_layers, output_size):
-        super(Decoder_GRU, self).__init__()
+        super(Decoder_LSTM, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.output_size = output_size
-        self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=True)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
 
-    def forward(self, x, pre_hidden):
-        output, h = self.gru(x, pre_hidden)
+    def forward(self, x, hidden_state):
+        # hidden_state is a tuple (h, c)
+        output, (h, c) = self.lstm(x, hidden_state)
         prediction = self.fc(output)
         prediction = prediction.squeeze(1)
-        return prediction, h
+        return prediction, (h, c)
 
 
-class Seq2SeqGRU(nn.Module):
-    """Sequence-to-sequence model with physics-based trajectory prediction."""
+class Seq2SeqLSTM(nn.Module):
+    """Sequence-to-sequence model with physics-based trajectory prediction using LSTM."""
 
     def __init__(self, encoder, decoder, horizon, delta_t, pos_mean, scaler_vel):
-        super(Seq2SeqGRU, self).__init__()
+        super(Seq2SeqLSTM, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.horizon = horizon
@@ -56,7 +57,7 @@ class Seq2SeqGRU(nn.Module):
 
     def forward(self, input_batch, target_seq=None, teacher_forcing_ratio=0.5):
         # 1. ENCODE
-        hidden = self.encoder(input_batch)
+        hidden = self.encoder(input_batch)  # Returns (h, c) tuple
 
         # 2. INITIALIZE PHYSICS STATE (Real World Units)
         current_pos = input_batch[:, -1, :3] + self.pos_mean
@@ -113,3 +114,9 @@ class Seq2SeqGRU(nn.Module):
                 current_pos = pos_predicted
 
         return torch.cat(path_vec, dim=1)
+
+
+# Aliases for backward compatibility
+Encoder_GRU = Encoder_LSTM
+Decoder_GRU = Decoder_LSTM
+Seq2SeqGRU = Seq2SeqLSTM
