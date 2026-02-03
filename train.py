@@ -8,13 +8,13 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 
 from config import (
-    HIDDEN_DIM, NUM_LAYERS, BATCH_SIZE, N_EPOCHS, LEARNING_RATE,
+    HIDDEN_DIM, BATCH_SIZE, N_EPOCHS, LEARNING_RATE,
     RANDOM_SEED, DIRECTORY, WINDOW_SIZE, HORIZON, DELTA_T, OUTPUT_SIZE,
     W_POS_ADE, W_VEL_MSE, W_ACC_MSE, PATIENCE,
     DOWNSAMPLE_FACTOR, ORIGINAL_WINDOW_SIZE, ORIGINAL_HORIZON
 )
 from data import TrajectoryDataset, preprocessing
-from models import Encoder_GRU, Decoder_GRU, Seq2SeqGRU
+from models import Seq2SeqDaVinciNet
 from utils import ade_loss, evaluate_at_timestamps, plot_stepwise_errors, plot_val_trajs_3d_and_xyz
 
 
@@ -91,9 +91,15 @@ def main():
         print(f"Memory Allocated: {torch.cuda.memory_allocated(0) / 1024 ** 2:.2f} MB")
 
     # === Build Model ===
-    encoder = Encoder_GRU(13, HIDDEN_DIM, NUM_LAYERS)
-    decoder = Decoder_GRU(OUTPUT_SIZE, HIDDEN_DIM, NUM_LAYERS, 3)
-    model = Seq2SeqGRU(encoder, decoder, HORIZON, DELTA_T, pos_mean, vel_scaler).to(device)
+    model = Seq2SeqDaVinciNet(
+        input_size=13,
+        hidden_size=HIDDEN_DIM,
+        seq_len=WINDOW_SIZE,
+        horizon=HORIZON,
+        delta_t=DELTA_T,
+        pos_mean=pos_mean,
+        scaler_vel=vel_scaler
+    ).to(device)
 
     # Print model info
     total_params = sum(p.numel() for p in model.parameters())
@@ -135,6 +141,7 @@ def main():
             loss = w_pos + w_vel + w_acc
 
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             # Accumulate losses
@@ -192,7 +199,7 @@ def main():
     evaluate_at_timestamps(model, train_loader, device, steps=[1, 2, 3, 4, 5])
 
     # Save model
-    model_save_path = os.path.join(DIRECTORY, 'model', f'GRU_modelbasedV_Hid{HIDDEN_DIM}_ds{DOWNSAMPLE_FACTOR}.pth')
+    model_save_path = os.path.join(DIRECTORY, 'model', f'DaVinciNet_Hid{HIDDEN_DIM}_ds{DOWNSAMPLE_FACTOR}.pth')
     os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
     torch.save(model.state_dict(), model_save_path)
     print(f"Model saved to: {model_save_path}")

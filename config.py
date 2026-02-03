@@ -1,14 +1,14 @@
 """Configuration parameters for trajectory prediction model."""
 
 # Model Architecture
-HIDDEN_DIM = 128
-NUM_LAYERS = 2
+HIDDEN_DIM = 96
+NUM_LAYERS = 1
 INPUT_DIM = 3  # Cartesian position of the decoder input
 OUTPUT_DIM = 6  # velocity and acceleration of the decoder's output
 
 # Training
 BATCH_SIZE = 512
-N_EPOCHS = 200
+N_EPOCHS = 500
 LEARNING_RATE = 1e-4
 TRAIN_RATIO = 0.8
 RANDOM_SEED = 42

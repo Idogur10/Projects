@@ -1,12 +1,13 @@
-# Trajectory Prediction using Physics-Informed Seq2Seq GRU
+# Trajectory Prediction using Physics-Informed Seq2Seq LSTM
 
-A deep learning approach for trajectory prediction using a sequence-to-sequence GRU architecture with physics-based motion integration.
+A deep learning approach for trajectory prediction using a sequence-to-sequence LSTM architecture with physics-based motion integration and temporal downsampling.
 
 ## Overview
 
 This project implements a trajectory prediction model that combines:
-- **GRU Encoder-Decoder Architecture**: Captures temporal dependencies in motion sequences
+- **LSTM Encoder-Decoder Architecture**: Captures long-term temporal dependencies with cell state memory
 - **Physics-Based Integration**: Uses Velocity Verlet integration for physically plausible predictions
+- **Temporal Downsampling**: Reduces input from 100Hz to 10Hz for efficient learning
 - **Teacher Forcing**: Improves training stability with scheduled sampling
 
 The model predicts future 3D positions, velocities, and accelerations given a history of observed trajectory points.
@@ -28,23 +29,36 @@ The model predicts future 3D positions, velocities, and accelerations given a hi
 └── requirements.txt          # Python dependencies
 ```
 
+### Available Models
+
+1. **Seq2SeqLSTM**: Standard LSTM encoder-decoder with Velocity Verlet physics
+2. **Seq2SeqDaVinciNet**: Advanced architecture with input attention (encoder) and temporal attention (decoder), inspired by "daVinciNet: Joint Prediction of Motion and Surgical State" (Qin et al., 2020)
+
 ## Model Architecture
 
 ```
-Input Sequence (200 steps)
+Raw Input (100Hz)
         │
         ▼
-┌───────────────┐
-│  GRU Encoder  │  ──►  Hidden State
-└───────────────┘
+┌─────────────────────┐
+│  Downsample (10Hz)  │
+└─────────────────────┘
         │
         ▼
-┌───────────────┐
-│  GRU Decoder  │  +  Velocity Verlet Physics
-└───────────────┘
+Input Sequence (20 steps @ 10Hz)
         │
         ▼
-Predicted Trajectory (50 steps)
+┌────────────────┐
+│  LSTM Encoder  │  ──►  Hidden State + Cell State
+└────────────────┘
+        │
+        ▼
+┌────────────────┐
+│  LSTM Decoder  │  +  Velocity Verlet Physics
+└────────────────┘
+        │
+        ▼
+Predicted Trajectory (5 steps @ 10Hz)
    [position, velocity, acceleration]
 ```
 
@@ -52,9 +66,18 @@ Predicted Trajectory (50 steps)
 
 | Component | Description |
 |-----------|-------------|
-| `Encoder_GRU` | Encodes input trajectory into hidden representation |
-| `Decoder_GRU` | Autoregressively generates future predictions |
-| `Seq2SeqGRU` | Combines encoder/decoder with physics integration |
+| `Encoder_LSTM` | Encodes input trajectory into hidden representation with cell state |
+| `Decoder_LSTM` | Autoregressively generates future predictions |
+| `Seq2SeqLSTM` | Combines encoder/decoder with physics integration |
+
+### Downsampling
+
+The model uses temporal downsampling to reduce computational complexity and focus on longer-term motion patterns:
+- **Original frequency**: 100Hz
+- **Downsampled frequency**: 10Hz (factor of 10)
+- **Input window**: 200 steps → 20 steps
+- **Prediction horizon**: 50 steps → 5 steps
+- **Time step (Δt)**: 0.01s → 0.1s
 
 ## Installation
 
@@ -87,14 +110,15 @@ Edit `config.py` to modify hyperparameters:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `HIDDEN_DIM` | 128 | GRU hidden layer size |
-| `NUM_LAYERS` | 2 | Number of stacked GRU layers |
+| `HIDDEN_DIM` | 96 | LSTM hidden layer size |
+| `NUM_LAYERS` | 1 | Number of stacked LSTM layers |
 | `BATCH_SIZE` | 512 | Training batch size |
-| `N_EPOCHS` | 200 | Maximum training epochs |
+| `N_EPOCHS` | 500 | Maximum training epochs |
 | `LEARNING_RATE` | 1e-4 | Adam optimizer learning rate |
-| `WINDOW_SIZE` | 200 | Input sequence length |
-| `HORIZON` | 50 | Prediction horizon |
-| `DELTA_T` | 0.01 | Time step (seconds) |
+| `DOWNSAMPLE_FACTOR` | 10 | Downsampling ratio (100Hz → 10Hz) |
+| `WINDOW_SIZE` | 20 | Input sequence length (after downsampling) |
+| `HORIZON` | 5 | Prediction horizon (after downsampling) |
+| `DELTA_T` | 0.1 | Time step in seconds (after downsampling) |
 
 ## Usage
 
