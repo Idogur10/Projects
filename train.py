@@ -14,7 +14,7 @@ from config import (
     DOWNSAMPLE_FACTOR, ORIGINAL_WINDOW_SIZE, ORIGINAL_HORIZON
 )
 from data import TrajectoryDataset, preprocessing
-from models import Seq2SeqDaVinciNet
+from models import Encoder_LSTM, Decoder_LSTM, Seq2SeqLSTM
 from utils import ade_loss, evaluate_at_timestamps, plot_stepwise_errors, plot_val_trajs_3d_and_xyz
 
 
@@ -91,10 +91,12 @@ def main():
         print(f"Memory Allocated: {torch.cuda.memory_allocated(0) / 1024 ** 2:.2f} MB")
 
     # === Build Model ===
-    model = Seq2SeqDaVinciNet(
-        input_size=13,
-        hidden_size=HIDDEN_DIM,
-        seq_len=WINDOW_SIZE,
+    encoder = Encoder_LSTM(input_size=13, hidden_size=HIDDEN_DIM, num_layers=1)
+    decoder = Decoder_LSTM(input_size=9, hidden_size=HIDDEN_DIM, num_layers=1, output_size=3)
+
+    model = Seq2SeqLSTM(
+        encoder=encoder,
+        decoder=decoder,
         horizon=HORIZON,
         delta_t=DELTA_T,
         pos_mean=pos_mean,
@@ -199,7 +201,7 @@ def main():
     evaluate_at_timestamps(model, train_loader, device, steps=[1, 2, 3, 4, 5])
 
     # Save model
-    model_save_path = os.path.join(DIRECTORY, 'model', f'DaVinciNet_Hid{HIDDEN_DIM}_ds{DOWNSAMPLE_FACTOR}.pth')
+    model_save_path = os.path.join(DIRECTORY, 'model', f'Seq2SeqLSTM_Hid{HIDDEN_DIM}_ds{DOWNSAMPLE_FACTOR}.pth')
     os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
     torch.save(model.state_dict(), model_save_path)
     print(f"Model saved to: {model_save_path}")
