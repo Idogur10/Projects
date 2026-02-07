@@ -21,6 +21,32 @@ from utils import ade_loss, evaluate_at_timestamps, plot_stepwise_errors, plot_v
 BATCH_SIZE=30
 delta_t=0.1
 
+def initialize_constant_matrices(H, K, degree=3):
+    # 1. Setup Knot Vector (Clamped)
+    # Total knots = n_control_points + degree + 1
+    n_knots = K + degree + 1
+    knots = np.concatenate([
+        np.zeros(degree),
+        np.linspace(0, 1, n_knots - 2 * degree),
+        np.ones(degree)
+    ])
+
+    # 2. Setup evaluation points (parameter s)
+    s_vals = np.linspace(0, 1, H)
+
+    # 3. Build Matrices
+    # Each column of the matrix represents one basis function
+    coeffs = np.eye(K)
+    spline = BSpline(knots, coeffs, degree)
+
+    # Convert to Torch Tensors
+    B = torch.from_numpy(spline(s_vals)).float()              # (H, K)
+    B_dot = torch.from_numpy(spline.derivative(1)(s_vals)).float()  # (H, K)
+    B_ddot = torch.from_numpy(spline.derivative(2)(s_vals)).float() # (H, K)
+    B_dddot = torch.from_numpy(spline.derivative(3)(s_vals)).float() # (H, K)
+
+    return B, B_dot, B_ddot, B_dddot
+
 def get_parameters_per_sample(input_vel, delta_time, eps, start_index):
     """
     Returns lists of alpha and beta for each sample in the batch.
@@ -119,13 +145,26 @@ def main():
     alphas_ref, betas_ref = get_parameters_per_sample(velocity_input, delta_t, eps=1e-8, start_index=0)
     alphas_np = np.asarray(alphas_ref, dtype=np.float64)
     betas_np = np.asarray(betas_ref, dtype=np.float64)
+    device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    target_alphas = torch.tensor(alphas_ref, dtype=torch.float32).to(device)
+    target_betas = torch.tensor(betas_ref, dtype=torch.float32).to(device)
     
 
     # Model
-    encoder = Encoder_LSTM(valid_inputs_raw.shape[-1], hidden_dim=HIDDEN_DIM)
-    decoder = Decoder_LSTM(output_dim=OUTPUT_SIZE + 3, hidden_dim=HIDDEN_DIM)
+    encoder = Encoder_LSTM(valid_inputs_raw.shape[-1], HIDDEN_DIM)
+    decoder = Decoder_LSTM(OUTPUT_SIZE + 3, HIDDEN_DIM)
     model = Seq2SeqLSTM(encoder, decoder, HORIZON, DEVICE='cuda' if torch.cuda.is_available() else 'cpu')
+    weights = torch.load('C:/Users/idogu/OneDrive/Documents/Master/data/model/Seq2SeqLSTM_Hid96_ds10.pth',map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+    model.load_state_dict(weights)
 
+    # Evaluation
+    model.eval()
+    with torch.no_grad():
+        input_tensor = torch.tensor(train_inputs_raw[:Batch_size, :, :], dtype=torch.float32).to(device)
+        R_u = model(input_tensor)
+    # Creating the B matrices for the first
+    H, K_ctrl = 5, 3
+    B, B_dot, B_ddot, B_dddot = initialize_constant_matrices(H, K_ctrl)
 
 if __name__ == "__main__":
     main()   
