@@ -37,3 +37,22 @@ DELTA_T = 0.01 * DOWNSAMPLE_FACTOR                       # 0.1 seconds
 
 STEP_SIZE = 50
 OUTPUT_SIZE = 9
+
+# Bi-level optimization (B-spline trajectory fitting)
+BSPLINE_BATCH_SIZE = 5      # Batch size for bi-level optimization
+BSPLINE_INNER_STEPS = 3     # Number of inner optimization steps
+BSPLINE_INNER_LR = 1e-3     # Inner loop learning rate
+BSPLINE_OUTER_LR = 5e-4     # Outer loop learning rate (for lambda optimization) - increased for faster convergence
+BSPLINE_N_EPOCHS = 2000     # Number of outer optimization epochs
+BSPLINE_K = 5               # Number of B-spline control points
+BSPLINE_DEGREE = 3          # B-spline degree (3 = cubic)
+
+# Initial hyperparameter values for loss weights
+LAMBDA_1_INIT = 500.0       # Position loss weight
+LAMBDA_2_INIT = 1000.0      # Power law loss weight
+LAMBDA_3_INIT = 1e-7        # Jerk loss weight
+
+# Learning rate scheduler
+LR_SCHEDULER_FACTOR = 0.5   # Reduce LR by this factor when plateau detected
+LR_SCHEDULER_PATIENCE = 50  # Wait this many epochs before reducing LR
+LR_MIN = 1e-6               # Minimum learning rate

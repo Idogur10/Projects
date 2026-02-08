@@ -4,6 +4,20 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 
 
+def downsample_data(data, factor):
+    """
+    Downsample trajectory data by taking every factor-th sample.
+
+    Args:
+        data: (N, seq_len, dim) array of trajectory data
+        factor: Downsampling factor (e.g., 10 for 100Hz -> 10Hz)
+
+    Returns:
+        Downsampled data (N, seq_len // factor, dim)
+    """
+    return data[:, ::factor, :]
+
+
 def preprocessing(data, vel_scaler=None, pos_mean=None):
     """
     Preprocess trajectory data with position centering and velocity scaling.
