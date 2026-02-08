@@ -299,7 +299,7 @@ def main():
 
     # === Initialize B-spline matrices ===
     H = HORIZON  # evaluation points (5 timesteps)
-    K = 8        # control points (increased to test jerk optimization)
+    K = 5        # control points (should be >= degree + 1)
     B_matrices, B_pinv = initialize_bspline_matrices(H, K, degree=3, device=device)
 
     # Ground truth control points
@@ -310,11 +310,11 @@ def main():
 
     # === Initialize hyperparameters (λ₁, λ₂, λ₃) ===
     # Using log-space for positivity constraint: exp(log_l) = l
-    # λ₁ = 500, λ₂ = 1000, λ₃ = 0.1 (increased to test jerk)
+    # λ₁ = 500, λ₂ = 1000, λ₃ = 1e-7
     import math
     log_l1 = torch.full((H,), math.log(500), device=device, requires_grad=True)    # position weight
     log_l2 = torch.full((H,), math.log(1000), device=device, requires_grad=True)   # power law weight
-    log_l3 = torch.full((H,), math.log(0.1), device=device, requires_grad=True)    # jerk weight (increased from 1e-7)
+    log_l3 = torch.full((H,), math.log(1e-7), device=device, requires_grad=True)   # jerk weight
 
     optimizer_lambda = optim.Adam([log_l1, log_l2, log_l3], lr=1e-4)
 
