@@ -8,14 +8,14 @@ OUTPUT_DIM = 6  # velocity and acceleration of the decoder's output
 
 # Training
 BATCH_SIZE = 512
-N_EPOCHS = 500
+N_EPOCHS = 2000
 LEARNING_RATE = 1e-4
 TRAIN_RATIO = 0.8
 RANDOM_SEED = 42
 
-# Loss weights
-W_POS_ADE = 500.0
-W_VEL_MSE = 1000.0
+# Loss weights (position is the primary objective)
+W_POS_ADE = 1000.0
+W_VEL_MSE = 500.0
 W_ACC_MSE = 20
 
 # Early stopping

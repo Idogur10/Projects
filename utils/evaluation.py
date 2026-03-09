@@ -4,6 +4,73 @@ import numpy as np
 import torch
 
 
+def evaluate_avg_mae_rmse(model, data_loader, device):
+    """
+    Calculates average MAE and RMSE over all trajectories and all timesteps.
+    Positions are converted from meters to millimeters.
+
+    Args:
+        model: Trained model
+        data_loader: DataLoader
+        device: torch device
+
+    Returns:
+        dict with 'mae' and 'rmse' per axis and total
+    """
+    model.eval()
+    all_abs_errors = []
+    all_sq_errors = []
+
+    with torch.no_grad():
+        for x_batch, y_batch in data_loader:
+            x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+            pred = model(x_batch, teacher_forcing_ratio=0.0)
+
+            # Convert to mm
+            pred_pos_mm = pred[:, :, :3] * 1000
+            true_pos_mm = y_batch[:, :, :3] * 1000
+
+            diff = pred_pos_mm - true_pos_mm
+
+            # Absolute error: (batch, horizon, 3)
+            all_abs_errors.append(torch.abs(diff).cpu())
+            # Squared error: (batch, horizon, 3)
+            all_sq_errors.append((diff ** 2).cpu())
+
+    # Concatenate all batches: (N, horizon, 3)
+    all_abs_errors = torch.cat(all_abs_errors, dim=0)
+    all_sq_errors = torch.cat(all_sq_errors, dim=0)
+
+    # Average over all samples and all timesteps: (3,)
+    mae_per_axis = all_abs_errors.mean(dim=(0, 1)).numpy()
+    mse_per_axis = all_sq_errors.mean(dim=(0, 1)).numpy()
+    rmse_per_axis = np.sqrt(mse_per_axis)
+
+    # Total MAE/RMSE (average across axes)
+    mae_total = mae_per_axis.mean()
+    rmse_total = np.sqrt(mse_per_axis.mean())
+
+    # Print results
+    print(f"\n{'='*50}")
+    print(f"Average MAE / RMSE over all trajectories (mm)")
+    print(f"{'='*50}")
+    axes_labels = ['X', 'Y', 'Z']
+    print(f"{'Axis':<6} | {'MAE (mm)':<14} | {'RMSE (mm)':<12}")
+    print(f"{'-'*40}")
+    for i, ax in enumerate(axes_labels):
+        print(f"{ax:<6} | {mae_per_axis[i]:<14.4f} | {rmse_per_axis[i]:<12.4f}")
+    print(f"{'-'*40}")
+    print(f"{'Total':<6} | {mae_total:<14.4f} | {rmse_total:<12.4f}")
+    print(f"{'='*50}")
+
+    return {
+        'mae_per_axis': mae_per_axis,
+        'rmse_per_axis': rmse_per_axis,
+        'mae_total': mae_total,
+        'rmse_total': rmse_total,
+    }
+
+
 def evaluate_at_timestamps(model, valid_loader, device, steps=[10, 20, 30, 40, 50]):
     """
     Calculates axis-wise MAE, RMSE, and total Euclidean Distance.
